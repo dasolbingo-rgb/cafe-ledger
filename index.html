@@ -74,6 +74,7 @@ label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
 
   <!-- 홈 -->
   <section id="v-home">
+    <div id="bkbar"></div>
     <div id="alerts"></div>
     <div class="card">
       <div class="row"><button class="icon" id="prev">‹</button><div class="sp" style="text-align:center;font-weight:700" id="mlabel"></div><button class="icon" id="next">›</button></div>
@@ -150,7 +151,7 @@ label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
     <div class="card"><div style="font-weight:600;margin-bottom:4px">월별</div><div id="rmonths"></div></div>
     <div class="card"><div style="font-weight:600;margin-bottom:4px">항목별 지출</div><div id="rcats"></div></div>
     <div class="card"><div style="font-weight:600;margin-bottom:4px">지출처별</div><div id="rvens"></div></div>
-    <div class="card"><div style="font-weight:600">백업</div><div class="sub" style="margin:2px 0 8px">기록은 이 폰에만 저장돼요. 가끔 파일로 저장해 두면 폰을 바꿔도 옮길 수 있어요</div><div class="row"><button class="ghost sp" id="bk-save">백업 저장</button><button class="ghost sp" id="bk-load">불러오기</button></div><input type="file" id="bk-file" accept=".json,application/json" class="hide"><div class="sub" id="bk-msg" style="margin-top:6px;text-align:center"></div></div>
+    <div class="card"><div style="font-weight:600">백업</div><div class="sub" style="margin:2px 0 8px">기록은 이 폰에만 저장돼요. 가끔 파일로 저장해 두면 폰을 바꿔도 옮길 수 있어요</div><div class="row"><button class="ghost sp" id="bk-save">백업 저장</button><button class="ghost sp" id="bk-load">불러오기</button></div><div class="sub" id="bk-last" style="margin-top:6px;text-align:center"></div><input type="file" id="bk-file" accept=".json,application/json" class="hide"><div class="sub" id="bk-msg" style="margin-top:6px;text-align:center"></div></div>
     <div class="card"><button id="r-csv" style="width:100%">엑셀(CSV)로 받기</button><div class="sub" id="r-msg" style="margin-top:6px;text-align:center">선택한 기간의 월별 요약과 지출 내역 전체가 들어가요</div></div>
   </section>
 
@@ -194,6 +195,9 @@ let store=null; // {expCol, fixCol} or null → localStorage
 /* ---------- 저장소: db 우선, 없으면 이 기기 localStorage ---------- */
 const LS="cafe-ledger-v1";
 function lsLoad(){try{return JSON.parse(localStorage.getItem(LS))||{expenses:[],fixed:[]}}catch(e){return{expenses:[],fixed:[]}}}
+const META="cafe-ledger-meta";
+function getMeta(){try{return JSON.parse(localStorage.getItem(META))||{}}catch(e){return{}}}
+function setMeta(o){try{localStorage.setItem(META,JSON.stringify({...getMeta(),...o}))}catch(e){}}
 function lsSave(){try{localStorage.setItem(LS,JSON.stringify({expenses,fixed,sales,favs,vendors}))}catch(e){}}
 function rowsOf(snap){
   const out=[];
@@ -277,7 +281,7 @@ function render(){
     it.append(m,a,x);l.append(it);
   });
 
-  renderAlerts();renderFixed();renderCal();renderFavs();renderVendors();renderReport();
+  renderAlerts();renderFixed();renderCal();renderFavs();renderVendors();renderReport();renderBackup();
 }
 
 /* ---------- 지출처 ---------- */
@@ -580,14 +584,7 @@ $("r-csv").onclick=async()=>{
     msg.textContent=c==="declined"?"":c==="host_unavailable"?"이 앱에서는 파일 저장이 안 돼요. 브라우저에서 열어 주세요":"저장이 안 됐어요 ("+(c||"오류")+")";
   }
 };
-$("bk-save").onclick=async()=>{
-  const m=$("bk-msg");
-  try{
-    const dl=await claude.use("downloads");
-    await dl.save({filename:"카페가계부_백업_"+today()+".json",data:JSON.stringify({v:1,expenses,fixed,sales,favs,vendors})});
-    m.textContent="저장했어요";
-  }catch(e){m.textContent=e&&e.code==="declined"?"":"저장이 안 됐어요"}
-};
+$("bk-save").onclick=doBackup;
 $("bk-load").onclick=()=>$("bk-file").click();
 $("bk-file").onchange=async ev=>{
   const f=ev.target.files[0],m=$("bk-msg");ev.target.value="";
@@ -616,6 +613,35 @@ $("fav-save").onclick=async()=>{
 };
 $("lclear").onclick=()=>{catFilter=null;render()};
 $("cprev").onclick=()=>shift(-1);$("cnext").onclick=()=>shift(1);
+
+/* ---------- 백업 (한 달마다 알림) ---------- */
+async function doBackup(){
+  const m=$("bk-msg");
+  try{
+    const dl=await claude.use("downloads");
+    await dl.save({filename:"카페가계부_백업.json",data:JSON.stringify({v:1,expenses,fixed,sales,favs,vendors})});
+    setMeta({lastBackup:today()});m.textContent="저장했어요";render();
+  }catch(e){m.textContent=e&&e.code==="declined"?"":"저장이 안 됐어요"}
+}
+function renderBackup(){
+  const meta=getMeta();
+  const li=$("bk-last");if(li)li.textContent=meta.lastBackup?"마지막 백업: "+meta.lastBackup:"아직 백업한 적이 없어요";
+  const box=$("bkbar");box.textContent="";
+  if(store)return;
+  if(!(expenses.length||fixed.length||Object.keys(sales).length))return;
+  const base=meta.lastBackup||meta.first||today();
+  const days=Math.floor((new Date(today())-new Date(base))/864e5);
+  if(days<30)return;
+  const c=document.createElement("div");c.className="card alert";
+  const r=document.createElement("div");r.className="row";
+  const m=document.createElement("div");m.className="sp";
+  const t=document.createElement("div");t.style.fontWeight="600";t.textContent="이번 달 백업을 해 주세요";
+  const s=document.createElement("div");s.className="sub";s.textContent=meta.lastBackup?"마지막 백업 후 "+days+"일 지났어요":"아직 백업한 적이 없어요";
+  m.append(t,s);
+  const b=document.createElement("button");b.textContent="백업하기";b.onclick=doBackup;
+  r.append(m,b);c.append(r);box.append(c);
+}
+{const mt=getMeta();if(!mt.first)setMeta({first:today()})}
 
 /* ---------- 시작 ---------- */
 function mv(id){const d=($(id).value||"").replace(/\D/g,"");return d?parseInt(d,10):NaN}
