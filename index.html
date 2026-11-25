@@ -106,6 +106,7 @@ label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
   <!-- 입력 -->
   <section id="v-add" class="hide">
     <div class="card">
+      <div id="edit-bar" class="hide row" style="margin-bottom:10px"><span class="sp" style="font-weight:600">지출 수정</span><button class="ghost" id="edit-cancel" style="padding:6px 12px;font-size:13px">취소</button></div>
       <div id="fav-box" class="hide"><div class="row"><span class="sub sp">자주 쓰는 지출</span><button class="icon" id="fav-manage" style="font-size:13px">관리</button></div><div class="chips" id="favs" style="margin-top:4px"></div></div>
       <label>금액 (원)</label>
       <input id="a-amt" type="text" inputmode="numeric" placeholder="0">
@@ -193,7 +194,7 @@ const pad=n=>String(n).padStart(2,"0");
 const today=()=>{const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())};
 const monthKey=d=>d.slice(0,7);
 let curMonth=monthKey(today());
-let expenses=[],fixed=[],cat=CATS[0],catFilter=null,sales={},favs=[],favManage=false,vendors=[],venSel="",venManage=false;
+let expenses=[],fixed=[],cat=CATS[0],catFilter=null,sales={},favs=[],favManage=false,vendors=[],venSel="",venManage=false,editId=null;
 let store=null; // {expCol, fixCol} or null → localStorage
 
 /* ---------- 저장소: db 우선, 없으면 이 기기 localStorage ---------- */
@@ -282,7 +283,9 @@ function render(){
     const a=document.createElement("div");a.className="amt";a.textContent=won(e.amount);
     const x=document.createElement("button");x.className="icon";x.textContent="✕";
     x.onclick=()=>{if(x.dataset.sure){del("expCol",e.id)}else{x.dataset.sure=1;x.textContent="삭제?";setTimeout(()=>{delete x.dataset.sure;x.textContent="✕"},2500)}};
-    it.append(m,a,x);l.append(it);
+    const eb=document.createElement("button");eb.className="icon";eb.textContent="✎";eb.onclick=()=>startEdit(e);
+    m.style.cursor="pointer";m.onclick=()=>startEdit(e);
+    it.append(m,a,eb,x);l.append(it);
   });
 
   renderAlerts();renderFixed();renderCal();renderFavs();renderVendors();renderReport();renderBackup();
@@ -302,6 +305,10 @@ function renderVendors(){
     b.onclick=()=>{venSel=venSel===v.name?"":v.name;renderVendors()};
     c.append(b);
   });
+  if(venSel&&!sorted.some(v=>v.name===venSel)){
+    const b=document.createElement("button");b.textContent=venSel;b.className="on";
+    b.onclick=()=>{venSel="";renderVendors()};c.append(b);
+  }
   const ed=$("ven-edit");ed.textContent="";
   ed.classList.toggle("hide",!venManage);
   if(!venManage)return;
@@ -483,7 +490,9 @@ function renderCal(){
     const s=document.createElement("div");s.className="sub";s.textContent=esub(e);
     m2.append(t,s);
     const a=document.createElement("div");a.className="amt";a.textContent=won(e.amount);
-    it.append(m2,a);dl.append(it);
+    const eb=document.createElement("button");eb.className="icon";eb.textContent="✎";eb.onclick=()=>startEdit(e);
+    m2.style.cursor="pointer";m2.onclick=()=>startEdit(e);
+    it.append(m2,a,eb);dl.append(it);
   });
 }
 
@@ -533,19 +542,36 @@ function renderFixed(){
 /* ---------- 입력 ---------- */
 function buildCats(){
   const c=$("a-cats");c.textContent="";
-  CATS.forEach(k=>{const b=document.createElement("button");b.textContent=k;if(k===cat)b.className="on";b.onclick=()=>{cat=k;buildCats()};c.append(b)});
+  (CATS.includes(cat)?CATS:CATS.concat([cat])).forEach(k=>{const b=document.createElement("button");b.textContent=k;if(k===cat)b.className="on";b.onclick=()=>{cat=k;buildCats()};c.append(b)});
   $("a-person-box").classList.toggle("hide",!isPersonCat(cat));
   const sel=$("f-cat"),keep=sel.value;sel.textContent="";CATS.forEach(k=>{const o=document.createElement("option");o.value=o.textContent=k;sel.append(o)});if(CATS.includes(keep))sel.value=keep;
 }
+function startEdit(e){
+  editId=e.id;
+  $("a-amt").value=num(e.amount);
+  cat=e.cat;venSel=e.vendor||"";
+  $("a-memo").value=e.memo||"";$("a-person").value=e.person||"";
+  $("a-date").value=e.date;
+  $("edit-bar").classList.remove("hide");$("a-save").textContent="수정 저장";
+  buildCats();show("add");window.scrollTo(0,0);
+}
+function endEdit(){editId=null;$("edit-bar").classList.add("hide");$("a-save").textContent="저장"}
+function cancelEdit(){
+  endEdit();
+  $("a-amt").value="";$("a-memo").value="";$("a-person").value="";$("a-date").value=today();venSel="";
+  buildCats();
+}
+$("edit-cancel").onclick=()=>{cancelEdit();show("home")};
 $("a-save").onclick=async()=>{
   const amt=mv("a-amt");
   if(!amt||amt<=0){$("a-amt").focus();return}
   const date=$("a-date").value||today();
-  const rec={id:uid(),date,amount:amt,cat,memo:$("a-memo").value.trim()};
+  const rec={id:editId||uid(),date,amount:amt,cat,memo:$("a-memo").value.trim()};
   const p=$("a-person").value.trim();
   if(isPersonCat(cat)&&p)rec.person=p;
   if(venSel)rec.vendor=venSel;
   await put("expCol",rec);
+  endEdit();
   $("a-amt").value="";$("a-memo").value="";$("a-person").value="";venSel="";
   curMonth=monthKey(date);show("home");
 };
@@ -558,9 +584,10 @@ $("f-save").onclick=async()=>{
 
 /* ---------- 탭/월 이동 ---------- */
 function show(v){
+  if(v!=="add"&&editId)cancelEdit();
   ["home","cal","add","fixed","report"].forEach(k=>$("v-"+k).classList.toggle("hide",k!==v));
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
-  if(v==="add"){$("a-date").value=today();setTimeout(()=>$("a-amt").focus(),50)}
+  if(v==="add"){if(!editId)$("a-date").value=today();setTimeout(()=>$("a-amt").focus(),50)}
   render();
 }
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>show(b.dataset.v));
