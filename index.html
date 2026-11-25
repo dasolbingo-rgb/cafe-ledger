@@ -9,7 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="카페 가계부">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#4a6785">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="cafe-icon.png?v=2">
+<link rel="icon" type="image/png" href="cafe-icon.png?v=2">
 <style>
 :root{--bg:#f1f4f8;--card:#fff;--ink:#1f2a37;--sub:#6b7a8c;--line:#dde3ea;--accent:#4a6785;--accent2:#e3eaf2;--warn:#c0392b;--ok:#3c7a54}
 @media(prefers-color-scheme:dark){:root{--bg:#141a21;--card:#1d252e;--ink:#e8edf3;--sub:#93a1b1;--line:#2d3946;--accent:#5f87b0;--accent2:#26333f;--warn:#ef7b6e;--ok:#79c093}}
@@ -108,8 +109,9 @@ label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
       <div id="fav-box" class="hide"><div class="row"><span class="sub sp">자주 쓰는 지출</span><button class="icon" id="fav-manage" style="font-size:13px">관리</button></div><div class="chips" id="favs" style="margin-top:4px"></div></div>
       <label>금액 (원)</label>
       <input id="a-amt" type="text" inputmode="numeric" placeholder="0">
-      <label>항목</label>
+      <div class="row"><label class="sp">항목</label><button class="icon" id="cat-manage" style="font-size:13px">관리</button></div>
       <div class="chips" id="a-cats"></div>
+      <div id="cat-edit" class="hide" style="margin-top:4px"></div>
       <div class="row"><label class="sp">지출처 (선택)</label><button class="icon" id="ven-manage" style="font-size:13px">관리</button></div>
       <div class="chips" id="vens"></div>
       <div id="ven-edit" class="hide" style="margin-top:8px"></div>
@@ -182,7 +184,9 @@ window.claude={use:async n=>n==="downloads"?{save:async({filename,data})=>{
 }}:null};
 </script>
 <script>
-const CATS=["원두·재료","포장·소모품","임대료","공연사용료","공과금","인건비","수수료","기타"];
+const DEFAULT_CATS=["원두·재료","포장·소모품","임대료","공연사용료","공과금","인건비","수수료","기타"];
+let CATS=DEFAULT_CATS.slice();
+const isPersonCat=c=>/인건비|급여|알바|월급/.test(c||"");
 const $=id=>document.getElementById(id);
 const won=n=>Math.round(n).toLocaleString("ko-KR")+"원";
 const pad=n=>String(n).padStart(2,"0");
@@ -198,7 +202,7 @@ function lsLoad(){try{return JSON.parse(localStorage.getItem(LS))||{expenses:[],
 const META="cafe-ledger-meta";
 function getMeta(){try{return JSON.parse(localStorage.getItem(META))||{}}catch(e){return{}}}
 function setMeta(o){try{localStorage.setItem(META,JSON.stringify({...getMeta(),...o}))}catch(e){}}
-function lsSave(){try{localStorage.setItem(LS,JSON.stringify({expenses,fixed,sales,favs,vendors}))}catch(e){}}
+function lsSave(){try{localStorage.setItem(LS,JSON.stringify({expenses,fixed,sales,favs,vendors,cats:CATS}))}catch(e){}}
 function rowsOf(snap){
   const out=[];
   const docs=snap&&(snap.docs||snap);
@@ -259,7 +263,7 @@ function render(){
   $("lhead").textContent=catFilter?catFilter+" "+won(by[catFilter]):"내역";
   $("lclear").classList.toggle("hide",!catFilter);
   const ls=$("lsum");ls.textContent="";
-  if(catFilter==="인건비"){
+  if(isPersonCat(catFilter)){
     const pp={};shown.forEach(e=>{const k=e.person||"이름 없음";pp[k]=(pp[k]||0)+e.amount});
     Object.entries(pp).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{
       const r=document.createElement("div");r.className="row sub";r.style.padding="2px 0";
@@ -530,8 +534,8 @@ function renderFixed(){
 function buildCats(){
   const c=$("a-cats");c.textContent="";
   CATS.forEach(k=>{const b=document.createElement("button");b.textContent=k;if(k===cat)b.className="on";b.onclick=()=>{cat=k;buildCats()};c.append(b)});
-  $("a-person-box").classList.toggle("hide",cat!=="인건비");
-  const sel=$("f-cat");if(!sel.options.length)CATS.forEach(k=>{const o=document.createElement("option");o.value=o.textContent=k;sel.append(o)});
+  $("a-person-box").classList.toggle("hide",!isPersonCat(cat));
+  const sel=$("f-cat"),keep=sel.value;sel.textContent="";CATS.forEach(k=>{const o=document.createElement("option");o.value=o.textContent=k;sel.append(o)});if(CATS.includes(keep))sel.value=keep;
 }
 $("a-save").onclick=async()=>{
   const amt=mv("a-amt");
@@ -539,7 +543,7 @@ $("a-save").onclick=async()=>{
   const date=$("a-date").value||today();
   const rec={id:uid(),date,amount:amt,cat,memo:$("a-memo").value.trim()};
   const p=$("a-person").value.trim();
-  if(cat==="인건비"&&p)rec.person=p;
+  if(isPersonCat(cat)&&p)rec.person=p;
   if(venSel)rec.vendor=venSel;
   await put("expCol",rec);
   $("a-amt").value="";$("a-memo").value="";$("a-person").value="";venSel="";
@@ -599,14 +603,16 @@ $("bk-file").onchange=async ev=>{
     [favs,r]=merge(favs,d.favs);n+=r;
     [vendors,r]=merge(vendors,d.vendors);n+=r;
     sales={...(d.sales||{}),...sales};
+    (d.cats||[]).forEach(c=>{if(typeof c==="string"&&c&&!CATS.includes(c)){CATS.push(c);n++}});buildCats();
     lsSave();render();
     m.textContent="불러왔어요 (새로 "+n+"건 추가, 기존 기록은 그대로예요)";
   }catch(e){m.textContent="백업 파일이 아닌 것 같아요"}
 };
+$("cat-manage").onclick=()=>{catManage=!catManage;renderCatEdit()};
 $("ven-manage").onclick=()=>{venManage=!venManage;renderVendors()};
 $("fav-manage").onclick=()=>{favManage=!favManage;renderFavs()};
 $("fav-save").onclick=async()=>{
-  const memo=$("a-memo").value.trim(),person=cat==="인건비"?$("a-person").value.trim():"";
+  const memo=$("a-memo").value.trim(),person=isPersonCat(cat)?$("a-person").value.trim():"";
   const amt=(mv("a-amt")||0),name=memo||person||cat;
   await put("favCol",{id:uid(),name,amount:amt,cat,memo,person,vendor:venSel});
   const b=$("fav-save");b.textContent="✓ 저장했어요";setTimeout(()=>{b.textContent="☆ 자주 쓰는 지출로 저장"},1500);
@@ -614,12 +620,53 @@ $("fav-save").onclick=async()=>{
 $("lclear").onclick=()=>{catFilter=null;render()};
 $("cprev").onclick=()=>shift(-1);$("cnext").onclick=()=>shift(1);
 
+/* ---------- 항목 편집 ---------- */
+let catManage=false;
+function saveCats(){lsSave();buildCats();renderCatEdit();render()}
+function renderCatEdit(){
+  $("cat-manage").textContent=catManage?"완료":"관리";
+  $("a-cats").classList.toggle("hide",catManage);
+  const ed=$("cat-edit");ed.textContent="";ed.classList.toggle("hide",!catManage);
+  if(!catManage)return;
+  CATS.forEach(k=>{
+    const r=document.createElement("div");r.className="row";r.style.marginBottom="6px";
+    const i=document.createElement("input");i.value=k;i.onchange=()=>renameCat(k,i.value);
+    const x=document.createElement("button");x.className="icon";x.textContent="✕";
+    x.onclick=()=>{if(x.dataset.sure){delCat(k)}else{x.dataset.sure=1;x.textContent="삭제?";setTimeout(()=>{delete x.dataset.sure;x.textContent="✕"},2500)}};
+    r.append(i,x);ed.append(r);
+  });
+  const ar=document.createElement("div");ar.className="row";
+  const ai=document.createElement("input");ai.placeholder="새 항목 (예: 배달 수수료)";
+  const ab=document.createElement("button");ab.textContent="추가";ab.style.whiteSpace="nowrap";
+  const add=()=>{const n=ai.value.trim();if(!n||CATS.includes(n)){ai.focus();return}CATS.push(n);saveCats()};
+  ab.onclick=add;ai.onkeydown=e=>{if(e.key==="Enter")add()};
+  ar.append(ai,ab);ed.append(ar);
+  const h=document.createElement("div");h.className="sub";h.style.marginTop="6px";
+  h.textContent="이름을 바꾸면 이전 기록도 같이 바뀌어요. 삭제해도 이전 기록에는 이름이 남아요. 직원 이름 칸은 이름에 인건비·급여·알바·월급이 들어간 항목에서 나와요.";
+  ed.append(h);
+}
+function renameCat(old,n){
+  n=(n||"").trim();
+  if(!n||n===old||CATS.includes(n)){renderCatEdit();return}
+  CATS=CATS.map(c=>c===old?n:c);
+  const mp=a=>a.map(e=>e.cat===old?{...e,cat:n}:e);
+  expenses=mp(expenses);fixed=mp(fixed);favs=mp(favs);
+  if(cat===old)cat=n;if(catFilter===old)catFilter=n;
+  saveCats();
+}
+function delCat(k){
+  if(CATS.length<=1)return;
+  CATS=CATS.filter(c=>c!==k);
+  if(cat===k)cat=CATS[0];
+  saveCats();
+}
+
 /* ---------- 백업 (한 달마다 알림) ---------- */
 async function doBackup(){
   const m=$("bk-msg");
   try{
     const dl=await claude.use("downloads");
-    await dl.save({filename:"카페가계부_백업.json",data:JSON.stringify({v:1,expenses,fixed,sales,favs,vendors})});
+    await dl.save({filename:"카페가계부_백업.json",data:JSON.stringify({v:1,expenses,fixed,sales,favs,vendors,cats:CATS})});
     setMeta({lastBackup:today()});m.textContent="저장했어요";render();
   }catch(e){m.textContent=e&&e.code==="declined"?"":"저장이 안 됐어요"}
 }
@@ -681,7 +728,7 @@ buildCats();
       }
     }
   }catch(e){store=null}
-  if(!ok){const d=lsLoad();expenses=d.expenses;fixed=d.fixed;sales=d.sales||{};favs=d.favs||[];vendors=d.vendors||[];$("status").textContent="이 폰에만 저장돼요 · 정산 탭에서 가끔 백업해 두세요"}
+  if(!ok){const d=lsLoad();expenses=d.expenses;fixed=d.fixed;sales=d.sales||{};favs=d.favs||[];vendors=d.vendors||[];if(Array.isArray(d.cats)&&d.cats.length){CATS=d.cats;cat=CATS[0]}buildCats();$("status").textContent="이 폰에만 저장돼요 · 정산 탭에서 가끔 백업해 두세요"}
   render();
 })();
 if(typeof claude==="undefined"){window.claude={use:async()=>null}}
