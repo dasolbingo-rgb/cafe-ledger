@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>카페 가계부</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -26,12 +26,13 @@ h1{font-size:18px;margin:4px 0 10px}
 button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:#fff;cursor:pointer}
 button.ghost{background:var(--accent2);color:var(--accent)}
 button.icon{background:none;color:var(--sub);padding:6px 10px;font-size:18px}
-input,select{font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+input,select{font:inherit;font-size:16px;width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
 input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;height:48px;text-align:left}
 input[type=date]::-webkit-date-and-time-value{text-align:left}
 label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
 .tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
-.tabs button{flex:1;background:none;color:var(--sub);border-radius:0;padding:14px 4px;font-size:14px}
+.tabs button{flex:1;background:none;color:var(--sub);border-radius:0;padding:10px 2px 8px;font-size:11px}
+.tabs button svg{display:block;margin:0 auto 3px}
 .tabs button.on{color:var(--accent);font-weight:700}
 .item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .item:last-child{border:0}
@@ -67,6 +68,10 @@ label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
 .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn)}
 .cell .dot{position:absolute;top:4px;right:4px}
 .note{font-size:12px;color:var(--sub);text-align:center;margin-top:8px}
+.fab{position:fixed;right:18px;bottom:calc(76px + env(safe-area-inset-bottom));width:54px;height:54px;border-radius:50%;background:var(--accent);color:#fff;font-size:28px;line-height:1;padding:0;box-shadow:0 4px 12px rgba(0,0,0,.28);z-index:6}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.modal.hide{display:none}
+.sheet{background:var(--card);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto}
 </style>
 </head>
 <body>
@@ -103,10 +108,9 @@ label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
     <div class="card"><div style="font-weight:600" id="dlabel"></div><div id="dlist"></div></div>
   </section>
 
-  <!-- 입력 -->
-  <section id="v-add" class="hide">
-    <div class="card">
-      <div id="edit-bar" class="hide row" style="margin-bottom:10px"><span class="sp" style="font-weight:600">지출 수정</span><button class="ghost" id="edit-cancel" style="padding:6px 12px;font-size:13px">취소</button></div>
+  <!-- 입력 (오른쪽 아래 + 버튼으로 여는 창) -->
+  <div id="v-add" class="modal hide"><div class="sheet">
+      <div class="row" style="margin-bottom:10px"><span class="sp" id="sheet-title" style="font-weight:600;font-size:17px">지출 입력</span><button class="ghost" id="edit-cancel" style="padding:6px 12px;font-size:13px">닫기</button></div>
       <div id="fav-box" class="hide"><div class="row"><span class="sub sp">자주 쓰는 지출</span><button class="icon" id="fav-manage" style="font-size:13px">관리</button></div><div class="chips" id="favs" style="margin-top:4px"></div></div>
       <label>금액 (원)</label>
       <input id="a-amt" type="text" inputmode="numeric" placeholder="0">
@@ -123,8 +127,7 @@ label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
       <input id="a-date" type="date">
       <div style="margin-top:14px"><button id="a-save" style="width:100%">저장</button></div>
       <div style="margin-top:8px"><button class="ghost" id="fav-save" style="width:100%">☆ 자주 쓰는 지출로 저장</button></div>
-    </div>
-  </section>
+  </div></div>
 
   <!-- 고정비 -->
   <section id="v-fixed" class="hide">
@@ -161,13 +164,8 @@ label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
   <div class="note" id="status"></div>
 </div>
 
-<nav class="tabs">
-  <button data-v="home" class="on">홈</button>
-  <button data-v="cal">달력</button>
-  <button data-v="add">+ 입력</button>
-  <button data-v="fixed">고정비</button>
-  <button data-v="report">정산</button>
-</nav>
+<nav class="tabs" id="tabs"></nav>
+<button class="fab" id="fab" aria-label="지출 입력">+</button>
 
 <script>
 /* 독립 실행(깃허브 페이지)용: 서버 저장은 없고, 파일 저장은 공유창/다운로드로 처리 */
@@ -273,7 +271,7 @@ function render(){
     });
   }
   const l=$("list");l.textContent="";
-  if(!shown.length)l.innerHTML='<div class="sub" style="padding:8px 0">+ 입력에서 첫 지출을 적어보세요</div>';
+  if(!shown.length)l.innerHTML='<div class="sub" style="padding:8px 0">오른쪽 아래 + 버튼으로 첫 지출을 적어보세요</div>';
   shown.forEach(e=>{
     const it=document.createElement("div");it.className="item";
     const m=document.createElement("div");m.className="sp";
@@ -552,16 +550,16 @@ function startEdit(e){
   cat=e.cat;venSel=e.vendor||"";
   $("a-memo").value=e.memo||"";$("a-person").value=e.person||"";
   $("a-date").value=e.date;
-  $("edit-bar").classList.remove("hide");$("a-save").textContent="수정 저장";
-  buildCats();show("add");window.scrollTo(0,0);
+  $("sheet-title").textContent="지출 수정";$("a-save").textContent="수정 저장";
+  buildCats();openAdd();
 }
-function endEdit(){editId=null;$("edit-bar").classList.add("hide");$("a-save").textContent="저장"}
+function endEdit(){editId=null;$("sheet-title").textContent="지출 입력";$("a-save").textContent="저장"}
 function cancelEdit(){
   endEdit();
   $("a-amt").value="";$("a-memo").value="";$("a-person").value="";$("a-date").value=today();venSel="";
   buildCats();
 }
-$("edit-cancel").onclick=()=>{cancelEdit();show("home")};
+$("edit-cancel").onclick=()=>closeAdd();
 $("a-save").onclick=async()=>{
   const amt=mv("a-amt");
   if(!amt||amt<=0){$("a-amt").focus();return}
@@ -573,7 +571,7 @@ $("a-save").onclick=async()=>{
   await put("expCol",rec);
   endEdit();
   $("a-amt").value="";$("a-memo").value="";$("a-person").value="";venSel="";
-  curMonth=monthKey(date);show("home");
+  curMonth=monthKey(date);closeAdd();render();
 };
 $("f-save").onclick=async()=>{
   const name=$("f-name").value.trim(),amt=mv("f-amt"),day=parseInt($("f-day").value,10);
@@ -583,14 +581,54 @@ $("f-save").onclick=async()=>{
 };
 
 /* ---------- 탭/월 이동 ---------- */
-function show(v){
-  if(v!=="add"&&editId)cancelEdit();
-  ["home","cal","add","fixed","report"].forEach(k=>$("v-"+k).classList.toggle("hide",k!==v));
-  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
-  if(v==="add"){if(!editId)$("a-date").value=today();setTimeout(()=>$("a-amt").focus(),50)}
-  render();
+const ICONS={
+  home:'<path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/><path d="M10 20v-6h4v6"/>',
+  cal:'<path d="M4 9h16M8 3v4M16 3v4"/><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8.5 14h.01M12 14h.01M15.5 14h.01M8.5 17.5h.01M12 17.5h.01"/>',
+  fixed:'<path d="M4 11a8 8 0 0 1 13.7-5.6L20 8"/><path d="M20 4v4h-4"/><path d="M20 13a8 8 0 0 1-13.7 5.6L4 16"/><path d="M4 20v-4h4"/>',
+  report:'<path d="M5 20V11M12 20V5M19 20v-6"/>'
+};
+const TABS=[["home","홈"],["cal","달력"],["fixed","고정비"],["report","정산"]];
+let curView="home";
+function drawTabs(){
+  $("tabs").innerHTML=TABS.map(([k,l])=>`<button data-v="${k}" class="${k===curView?"on":""}"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>${l}</button>`).join("");
 }
-document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>show(b.dataset.v));
+function show(v){
+  curView=v;
+  ["home","cal","fixed","report"].forEach(k=>$("v-"+k).classList.toggle("hide",k!==v));
+  drawTabs();
+  $("fab").style.display=v==="fixed"?"none":"";
+  render();window.scrollTo(0,0);
+}
+$("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(b)show(b.dataset.v)});
+function openAdd(){
+  if(!editId)$("a-date").value=today();
+  renderVendors();renderFavs();
+  $("v-add").classList.remove("hide");
+  setTimeout(()=>$("a-amt").focus(),50);
+}
+function closeAdd(){
+  $("v-add").classList.add("hide");
+  if(editId)cancelEdit();
+}
+$("fab").onclick=openAdd;
+$("v-add").addEventListener("click",e=>{if(e.target.id==="v-add")closeAdd()});
+/* 옆으로 밀어 탭 이동 */
+(()=>{
+  const order=["home","cal","fixed","report"];
+  let sx=0,sy=0,st=0,ok=false;
+  document.addEventListener("touchstart",e=>{
+    ok=e.touches.length===1&&$("v-add").classList.contains("hide")&&!e.target.closest("input,select,textarea");
+    if(!ok)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;st=Date.now();
+  },{passive:true});
+  document.addEventListener("touchend",e=>{
+    if(!ok)return;ok=false;
+    const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;
+    if(Math.abs(dx)<70||Math.abs(dx)<Math.abs(dy)*1.8||Date.now()-st>600)return;
+    const n=order.indexOf(curView)+(dx<0?1:-1);
+    if(n<0||n>=order.length)return;
+    show(order[n]);
+  },{passive:true});
+})();
 function shift(n){const[y,m]=curMonth.split("-").map(Number);const d=new Date(y,m-1+n,1);curMonth=d.getFullYear()+"-"+pad(d.getMonth()+1);render()}
 $("prev").onclick=()=>shift(-1);$("next").onclick=()=>shift(1);
 $("seditbtn").onclick=()=>{
@@ -725,7 +763,7 @@ function mv(id){const d=($(id).value||"").replace(/\D/g,"");return d?parseInt(d,
   const u=document.createElement("span");u.textContent="원";w.append(u);
   el.addEventListener("input",()=>{const d=el.value.replace(/\D/g,"");el.value=d?Number(d).toLocaleString("ko-KR"):""});
 });
-buildCats();
+buildCats();drawTabs();
 (async function init(){
   let ok=false;
   try{
